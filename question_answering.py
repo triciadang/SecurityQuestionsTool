@@ -2,12 +2,12 @@ import torch
 import nlp
 from transformers import LongformerTokenizerFast,LongformerTokenizer, LongformerForQuestionAnswering, EvalPrediction
 
-import json
-import os
-import re
 import string
-import numpy as np
 import re
+
+import requests, lxml
+from bs4 import BeautifulSoup
+
 
 
 import snscrape.modules.twitter as sntwitter
@@ -33,7 +33,7 @@ def normalize_text(text):
 
 # The actual function that does the job
 def longformer(text,question):
-    encoding = tokenizer.encode_plus(question, text, return_tensors="pt",max_length=750,pad_to_max_length=True, truncation = True)
+    encoding = tokenizer.encode_plus(question, text, return_tensors="pt",max_length=4096,padding='longest', truncation = True)
 
     input_ids = encoding["input_ids"]
 
@@ -59,8 +59,6 @@ def get_all_tweets_from_username(twitter_username):
 
     # Using TwitterSearchScraper to scrape data and append tweets to list
     for i, tweet in enumerate(sntwitter.TwitterSearchScraper('from:' + twitter_username).get_items()):
-        if i > 500:
-            break
         #tweets_list1.append([tweet.date, tweet.content, tweet.user.username])
         tweets_list1.append([tweet.content])
 
@@ -80,14 +78,26 @@ def get_all_facebook_posts(posts_excel_sheet):
 
     return facebook_df
 
-def get_security_answers(text,question):
+def concatenate_all_posts(text):
     all_cleaned_text = ""
     for each_text in text.get('Text'):
-        print("Text: " + each_text)
-        all_cleaned_text += normalize_text(each_text) + " "
+        print("Post: " + str(each_text))
+        all_cleaned_text += str(each_text)
 
-    print(all_cleaned_text)
-    print("Answer: " + longformer(all_cleaned_text,question))
+    return all_cleaned_text
+
+
+def checkIfUsernameExists(cursor,username):
+
+    cursor.execute("SELECT * FROM users_tweets_posts WHERE user_name= '" + username + "'")
+    existingUsername=cursor.fetchall()  # fetch (and discard) remaining rows
+    print(existingUsername)
+
+    if len(existingUsername):
+        return True
+    else:
+        return False
+
 
 def main():
     db = mysql.connect(
@@ -98,22 +108,84 @@ def main():
     )
 
     cursor = db.cursor()
-    cursor.execute("CREATE TABLE users_tweets_posts (name VARCHAR(255), user_name VARCHAR(255),tweets1 LONGTEXT)")
+
+    cursor.execute("CREATE TABLE IF NOT EXISTS users_tweets_posts (name VARCHAR(255), user_name VARCHAR(255) PRIMARY KEY,tweets1 LONGTEXT)")
+
+    #cursor.execute("INSERT INTO users_tweets_posts (name,user_name,tweets1) VALUES ('try1', 'trial1', 'here')")
 
 
-
-    print(len("dreaming is believing i still cant believe falcons lost superbowl go falconssss bean sprouts anyone why are bean sprouts so good thunder is best dog ever randy is very good at lost arkand so is chip and ji why is my korean so good bean sprouts is conegamule in korean my favorite food is bean sprouts hi there i like foood "))
-
-    #print(longformer("""I like bean sprouts. Thunder is my dog. Falcons is my favorite football team.""", "What did you call your favorite childhood pet?"))
-
-    questions_list = ["What did you call your favorite childhood pet?","What is your favorite food?","Who is your all-time favorite author?","Who is your favorite actor of all time?","Who is your favorite cartoon character?",
-"What is your favorite movie?","What is your favorite place to vacation?","What is your favorite sports team?","What was your favorite school teacher’s name?","What was your high school mascot?"]
+    questions_list = ["What did you call your favorite childhood pet?","What is your favorite food?","Who is your all-time favorite author?","What was your favorite book?","Who is your favorite actor of all time?","Who is your favorite cartoon character?",
+"What is your favorite movie?","What is your favorite place to vacation?","What is your favorite sports team?","What was your favorite school teacher’s name?","What was your high school mascot?","Where did you go to high school?"]
 
     #Twitter
-    twitter_username = 'triciadang7'
-    #twitter_username = 'selenagomez'
-    tweets_df1 = get_all_tweets_from_username(twitter_username)
-    get_security_answers(tweets_df1,questions_list[1])
+    #twitter_username = 'triciadang7'
+    #twitter_username = 'Casey'
+    #tweets_df1 = get_all_tweets_from_username(twitter_username)
+    #all_posts = concatenate_all_posts(tweets_df1)
+
+    #Facebook
+    facebook_excel_path = 'C:\\Users\\trici\\OneDrive\\Documents\\GT\\AlexaGilomenFacebook.xlsx'
+    facebook_df1 = get_all_facebook_posts(facebook_excel_path)
+    all_posts= concatenate_all_posts(facebook_df1)
+
+    for each_question in questions_list:
+        answer = longformer(all_posts, each_question)
+        if "Where did you go to high school?" in each_question:
+            high_school = answer.split(" ")
+            high_school_search = ""
+            for each_word in high_school:
+                high_school_search += each_word + "%20"
+
+            url = 'https://www.google.com/search?q=' + high_school_search + "mascot"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.186 Safari/537.36'}
+
+            try:
+                r = requests.get(url, headers=headers)
+                soup = BeautifulSoup(r.text, 'lxml')
+
+                result = soup.find('div', class_='Z0LcW')
+
+                print("Question: " + "What was your high school mascot?")
+                print("Most Likely Predicted Answer: " + result.text)
+
+            except AttributeError:
+                pass
+
+        elif "book" in each_question:
+            book = answer.split(" ")
+            book_search = ""
+            for each_word in book:
+                book_search += each_word + "%20"
+
+            url = 'https://www.google.com/search?q=' + book_search + "author"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.186 Safari/537.36'}
+
+            try:
+                r = requests.get(url, headers=headers)
+                soup = BeautifulSoup(r.text, 'lxml')
+
+                result = soup.find('div', class_='Z0LcW')
+
+                print("Question: " + "Who is your all-time favorite author?")
+                print("Second Likely Predicted Answer: " + result.text)
+            except AttributeError:
+                pass
+
+
+        else:
+            print("Question: " + each_question)
+            print("Predicted Answer: " + answer)
+
+    #if checkIfUsernameExists(cursor,twitter_username):
+    #    pass
+        #take data from database
+    #else:
+    #    cursor.execute("INSERT INTO users_tweets_posts (name,user_name,tweets1) VALUES ('Tricia Dang', 'triciadang7', '" + all_tweets + "')")
+
+
+    #get_security_answers(tweets_df1,questions_list[1])
 
     #get_security_answers(tweets_df1)
 
