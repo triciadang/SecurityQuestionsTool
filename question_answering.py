@@ -59,11 +59,6 @@ def longformer(text,question):
 
     answer = tokenizer.decode(tokenizer.convert_tokens_to_ids(answer_tokens))
 
-    if avg_of_start_end_score > high_avg_score:
-        high_avg_score = avg_of_start_end_score
-        current_answer = answer
-
-
     #https://stackoverflow.com/questions/49268359/scrape-google-quick-answer-box-in-python
     if "What high school did you go to?" in question:
         high_school = answer.split(" ")
@@ -113,7 +108,9 @@ def longformer(text,question):
         except AttributeError:
             pass
 
-
+    if avg_of_start_end_score > high_avg_score:
+        high_avg_score = avg_of_start_end_score
+        current_answer = answer
 
     return
 
@@ -139,45 +136,12 @@ def get_all_tweets_from_username(twitter_username):
 def get_all_facebook_posts(posts_excel_sheet):
     facebook_df = pd.read_excel(posts_excel_sheet,names=['Text'])
 
-    #display(facebook_df)
-
-    #for each in facebook_df.get('Text'):
-    #    print("==============")
-    #    print(each)
-
     return facebook_df
 
 def concatenate_all_posts(text):
     all_cleaned_text = ""
     for each_text in text.get('Text'):
-        if str(each_text)[:1] in string.punctuation:
-            all_cleaned_text += str(each_text)
-        else:
             all_cleaned_text += str(each_text) + ". "
-
-    #
-    # groups_of_4096_length = []
-    # group_index = 0
-    # groups_of_4096_length.append("")
-    # length = 0
-
-    # for each_text in text.get('Text'):
-    #     print(length)
-    #     if (length + len(each_text) + len(".")) <= 4096:
-    #         if str(each_text)[:1] in string.punctuation:
-    #             groups_of_4096_length[group_index] += str(each_text)
-    #         else:
-    #             groups_of_4096_length[group_index] += str(each_text) + ". "
-    #         length += len(each_text)
-    #
-    #     else:
-    #         group_index += 1
-    #         groups_of_4096_length.append("")
-    #         if str(each_text)[:1] in string.punctuation:
-    #             groups_of_4096_length[group_index] += str(each_text)
-    #         else:
-    #             groups_of_4096_length[group_index] += str(each_text) + ". "
-    #         length = len(each_text)
 
     return all_cleaned_text
 
@@ -189,8 +153,10 @@ def checkIfUsernameExists(cursor,username):
     print(existingUsername)
 
     if len(existingUsername):
+        print("abcd")
         return True
     else:
+        print("efgh")
         return False
 
 
@@ -204,7 +170,7 @@ def main():
 
     cursor = db.cursor()
 
-    cursor.execute("CREATE TABLE IF NOT EXISTS users_tweets_posts (user_name VARCHAR(255) PRIMARY KEY,tweets1 LONGTEXT)")
+    cursor.execute("CREATE TABLE IF NOT EXISTS users_tweets_posts (user_name varchar(255) PRIMARY KEY,excel_path varchar(255));")
     db.commit()
 
     questions_list = ["What did you call your favorite childhood pet?","What is your favorite food?","Who is your all-time favorite author?","What was your favorite book?","Who is your favorite actor of all time?","Who is your favorite cartoon character?",
@@ -219,29 +185,34 @@ def main():
     twitter_username = 'EvrydayShortcut'
     #tweets_df1 = get_all_tweets_from_username(twitter_username)
     #tweets_df1.to_excel(twitter_username + ".xlsx")
-    excel_path = twitter_username + ".xlsx"
-
-    excel_path = 'triciadang7.xlsx'
 
     #From Facebook Example
     #Working Facebook excel
     #excel_path = 'Sample2.xlsx'
 
-    facebook_df1 = get_all_facebook_posts(excel_path)
-
     #Database Infrastructure
     if checkIfUsernameExists(cursor,twitter_username):
-        pass
-        cursor.execute("SELECT tweets1 FROM users_tweets_posts WHERE user_name= '" + twitter_username + "'")
-    # take data from database
+        cursor.execute("SELECT excel_path FROM users_tweets_posts WHERE user_name= '" + twitter_username + "';")
+        excel_path = cursor.fetchall()
+        excel_path = excel_path[0][0]
+
+        # take data from database
     else:
-       cursor.execute("INSERT INTO users_tweets_posts (name,user_name,tweets1) VALUES ('Tricia Dang', 'triciadang7', '" + all_tweets + "')")
-       db.commit()
+        excel_path = twitter_username + ".xlsx"
+        cursor.execute("INSERT INTO users_tweets_posts (user_name,excel_path) VALUES ('" + twitter_username + "','" + excel_path + "');")
+        db.commit()
+
+    facebook_df1 = get_all_facebook_posts(excel_path)
 
 
     groups_of_token =  ""
+    total_tokens = 0
 
     # for each_question in questions_list:
+    #for each question restart highest average score and current answer
+    # high_avg_score = -1000
+    # current_answer = ""
+
     each_question = questions_list[1]
     for each_text in facebook_df1.get('Text'):
         print(each_text)
@@ -252,6 +223,7 @@ def main():
             all_cleaned_text = str(each_text) + ". "
 
         tokens_in_post = number_of_tokens(each_text)
+        total_tokens += tokens_in_post
 
         print(number_of_tokens(groups_of_token))
 
@@ -269,6 +241,7 @@ def main():
         else:
             longformer(groups_of_token, each_question)
             groups_of_token = all_cleaned_text
+    print(total_tokens)
 
     print("Question: " + each_question)
     if current_answer is not None:
@@ -280,5 +253,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
