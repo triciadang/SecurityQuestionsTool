@@ -11,13 +11,14 @@ import pandas as pd
 from IPython.display import display
 import mysql.connector as mysql
 import nltk
+import time
 
 #os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 #Fetching the pretrained model
 tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-base-4096')
 model = LongformerForQuestionAnswering.from_pretrained("valhalla/longformer-base-4096-finetuned-squadv1")
-high_avg_score = -1000
-current_answer = ""
+
+question_answer_dict = {}
 
  # Basic preprocessing functions
 def normalize_text(text):
@@ -34,8 +35,7 @@ def number_of_tokens(text):
 
 # The actual function that does the job
 def longformer(text,question):
-    global high_avg_score
-    global current_answer
+    global high_avg_current_answer_dict
     #encoding = tokenizer.encode_plus(question, text, return_tensors="pt",max_length=750,pad_to_max_length=True)
     encoding = tokenizer.encode_plus(question, text, return_tensors="pt", max_length=4096, truncation=True)
     input_ids = encoding["input_ids"]
@@ -45,16 +45,9 @@ def longformer(text,question):
     attention_mask = encoding["attention_mask"]
 
     start_scores, end_scores = model(input_ids, attention_mask=attention_mask, return_dict=False)
-    print(start_scores)
+    # print(start_scores)
     all_tokens = tokenizer.convert_ids_to_tokens(input_ids[0].tolist())
     answer_tokens = all_tokens[torch.argmax(start_scores) :torch.argmax(end_scores)+1]
-    highest_start_score = torch.argmax(start_scores)
-    highest_end_score = torch.argmax(end_scores)
-    highest_start_score = torch.argmax(start_scores)
-    print(highest_start_score)
-    print(highest_end_score)
-    print(float(torch.max(start_scores)))
-    print(float(torch.max(end_scores)))
     avg_of_start_end_score = (float(torch.max(start_scores)) + float(torch.max(end_scores)))/2
 
     answer = tokenizer.decode(tokenizer.convert_tokens_to_ids(answer_tokens))
@@ -79,8 +72,8 @@ def longformer(text,question):
 
             answer = result.text
 
-            print("Question: " + "What was your high school mascot?")
-            print("Most Likely Predicted Answer: " + result.text)
+            # print("Question: " + "What was your high school mascot?")
+            # print("Most Likely Predicted Answer: " + result.text)
 
         except AttributeError:
             pass
@@ -92,6 +85,7 @@ def longformer(text,question):
             book_search += each_word + "%20"
 
         url = 'https://www.google.com/search?q=' + book_search + "author"
+        print(url)
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.186 Safari/537.36'}
 
@@ -103,14 +97,19 @@ def longformer(text,question):
 
             answer = result.text
 
-            print("Question: " + "Who is your all-time favorite author?")
-            print("Second Likely Predicted Answer: " + result.text)
+            # print("Question: " + "Who is your all-time favorite author?")
+            # print("Second Likely Predicted Answer: " + result.text)
+
         except AttributeError:
             pass
 
-    if avg_of_start_end_score > high_avg_score:
-        high_avg_score = avg_of_start_end_score
-        current_answer = answer
+    if avg_of_start_end_score > question_answer_dict[question][0]:
+        question_answer_dict[question][0] = avg_of_start_end_score
+        question_answer_dict[question][1] = answer
+        # print(current_answer)
+    #print(avg_of_start_end_score)
+    print(question + ": " + answer + ", " + str(avg_of_start_end_score))
+    print("===============================")
 
     return
 
@@ -150,17 +149,17 @@ def checkIfUsernameExists(cursor,username):
 
     cursor.execute("SELECT * FROM users_tweets_posts WHERE user_name= '" + username + "'")
     existingUsername=cursor.fetchall()  # fetch (and discard) remaining rows
-    print(existingUsername)
 
     if len(existingUsername):
-        print("abcd")
         return True
     else:
-        print("efgh")
         return False
 
 
 def main():
+
+    global question_answer_dict
+
     db = mysql.connect(
         host="localhost",
         user="root",
@@ -178,17 +177,17 @@ def main():
 
     #Twitter
 
-    #Working Twitter username Example
+    #Working Examples
     #twitter_username = 'triciadang7'
 
-    #Other tries
-    twitter_username = 'EvrydayShortcut'
-    #tweets_df1 = get_all_tweets_from_username(twitter_username)
-    #tweets_df1.to_excel(twitter_username + ".xlsx")
+    #facebook excel
+    #twitter_username = 'Friend1'
+    #twitter_username = 'Friend2'
 
-    #From Facebook Example
-    #Working Facebook excel
-    #excel_path = 'Sample2.xlsx'
+    #Other tries
+    twitter_username = 'DanEvansVlog'
+
+
 
     #Database Infrastructure
     if checkIfUsernameExists(cursor,twitter_username):
@@ -198,6 +197,9 @@ def main():
 
         # take data from database
     else:
+        tweets_df1 = get_all_tweets_from_username(twitter_username)
+        tweets_df1.to_excel(twitter_username + ".xlsx")
+
         excel_path = twitter_username + ".xlsx"
         cursor.execute("INSERT INTO users_tweets_posts (user_name,excel_path) VALUES ('" + twitter_username + "','" + excel_path + "');")
         db.commit()
@@ -205,17 +207,21 @@ def main():
     facebook_df1 = get_all_facebook_posts(excel_path)
 
 
+    start_time = time.time()
     groups_of_token =  ""
     total_tokens = 0
 
-    # for each_question in questions_list:
-    #for each question restart highest average score and current answer
-    # high_avg_score = -1000
-    # current_answer = ""
+    high_avg_score = -1000
+    current_answer = ""
 
-    each_question = questions_list[1]
+    for each_question in questions_list:
+    #for each question start highest average score and current answer
+        question_answer_dict[each_question] = [high_avg_score,current_answer]
+
+    # each_question = questions_list[1]
+    number_of_posts = 0
     for each_text in facebook_df1.get('Text'):
-        print(each_text)
+        number_of_posts+=1
         if str(each_text)[-1] in string.punctuation:
             all_cleaned_text = str(each_text)
         else:
@@ -225,13 +231,14 @@ def main():
         tokens_in_post = number_of_tokens(each_text)
         total_tokens += tokens_in_post
 
-        print(number_of_tokens(groups_of_token))
+        # print(number_of_tokens(groups_of_token))
 
         #if last one in dataframe, then run longformer function
         if each_text == facebook_df1['Text'].iloc[-1]:
-            print(tokens_in_post)
+            #print(tokens_in_post)
             print(groups_of_token)
-            longformer(groups_of_token,each_question)
+            for each_question in questions_list:
+                longformer(groups_of_token,each_question)
 
         #if not last one, keep adding to current group of 4096
         elif tokens_in_post + number_of_tokens(groups_of_token) < 4090:
@@ -239,15 +246,31 @@ def main():
 
         #once reach length of 4096, run longformer function
         else:
-            longformer(groups_of_token, each_question)
-            groups_of_token = all_cleaned_text
-    print(total_tokens)
+            print(groups_of_token)
+            for each_question in questions_list:
+                longformer(groups_of_token, each_question)
 
-    print("Question: " + each_question)
-    if current_answer is not None:
-        print("Answer: " + str(current_answer))
-    else:
-        print("Answer: Unknown")
+            #start making next group of 4096
+            groups_of_token = all_cleaned_text
+
+
+    for each_question in questions_list:
+        if question_answer_dict[each_question][1] == "" or len(question_answer_dict[each_question][1]) > 100:
+            result = "Did not detect"
+        else:
+            result = question_answer_dict[each_question][1]
+
+        if "What high school did you go to?" in each_question:
+            print("Question: " + "What was your high school mascot?")
+            print("Most Likely Predicted Answer: " + str(result))
+        elif "book" in each_question:
+            print("Question: " + "Who is your all-time favorite author?")
+            print("Second Likely Predicted Answer: " + str(result))
+        else:
+            print("Question: " + each_question)
+            print("Answer: " + str(result))
+
+    print("Runtime for " + str(number_of_posts) + ": " + str((time.time()-start_time)/60))
 
 
 
