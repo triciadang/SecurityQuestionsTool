@@ -36,7 +36,6 @@ def number_of_tokens(text):
 # The actual function that does the job
 def longformer(text,question):
     global high_avg_current_answer_dict
-    #encoding = tokenizer.encode_plus(question, text, return_tensors="pt",max_length=750,pad_to_max_length=True)
     encoding = tokenizer.encode_plus(question, text, return_tensors="pt", max_length=4096, truncation=True)
     input_ids = encoding["input_ids"]
 
@@ -45,12 +44,15 @@ def longformer(text,question):
     attention_mask = encoding["attention_mask"]
 
     start_scores, end_scores = model(input_ids, attention_mask=attention_mask, return_dict=False)
-    # print(start_scores)
     all_tokens = tokenizer.convert_ids_to_tokens(input_ids[0].tolist())
     answer_tokens = all_tokens[torch.argmax(start_scores) :torch.argmax(end_scores)+1]
     avg_of_start_end_score = (float(torch.max(start_scores)) + float(torch.max(end_scores)))/2
 
     answer = tokenizer.decode(tokenizer.convert_tokens_to_ids(answer_tokens))
+
+    if len(answer)>100:
+        find_actual_answer = answer.split("\n")
+        answer = find_actual_answer[0]
 
     #https://stackoverflow.com/questions/49268359/scrape-google-quick-answer-box-in-python
     if "What high school did you go to?" in question:
@@ -110,7 +112,6 @@ def longformer(text,question):
     #print(avg_of_start_end_score)
     print(question + ": " + answer + ", " + str(avg_of_start_end_score))
     print("===============================")
-
     return
 
 def get_all_tweets_from_username(twitter_username):
@@ -137,12 +138,12 @@ def get_all_facebook_posts(posts_excel_sheet):
 
     return facebook_df
 
-def concatenate_all_posts(text):
-    all_cleaned_text = ""
-    for each_text in text.get('Text'):
-            all_cleaned_text += str(each_text) + ". "
-
-    return all_cleaned_text
+# def concatenate_all_posts(text):
+#     all_cleaned_text = ""
+#     for each_text in text.get('Text'):
+#             all_cleaned_text += str(each_text) + ".\n"
+#
+#     return all_cleaned_text
 
 
 def checkIfUsernameExists(cursor,username):
@@ -173,20 +174,30 @@ def main():
     db.commit()
 
     questions_list = ["What did you call your favorite childhood pet?","What is your favorite food?","Who is your all-time favorite author?","What was your favorite book?","Who is your favorite actor of all time?","Who is your favorite cartoon character?",
-"What is your favorite movie?","What is your favorite place to vacation?","What is your favorite sports team?","What was your favorite school teacher’s name?","What was your high school mascot?","What high school did you go to?"]
+"What is your favorite movie?","What is your favorite place to vacation?","What is your favorite sports team?","What was your favorite teacher’s name?","What was your high school mascot?","What high school did you go to?"]
 
     #Twitter
 
     #Working Examples
-    #twitter_username = 'triciadang7'
+    #twitter_username = "triciadang7"
+    twitter_username = 'joebiden'
+
+    twitter_username = 'katyperry'
+
+    twitter_username = 'ranzkyle'
 
     #facebook excel
     #twitter_username = 'Friend1'
     #twitter_username = 'Friend2'
 
-    #Other tries
-    twitter_username = 'DanEvansVlog'
 
+    #uncomment to update tweets
+    # tweets_df1 = get_all_tweets_from_username(twitter_username)
+    # display(tweets_df1)
+    # tweets_df1.to_excel(twitter_username + ".xlsx")
+
+    #uncomment for demo
+    #twitter_username = input("Enter username: ")
 
 
     #Database Infrastructure
@@ -206,6 +217,9 @@ def main():
 
     facebook_df1 = get_all_facebook_posts(excel_path)
 
+    print("Collecting tweets...")
+    print("Processing...")
+
 
     start_time = time.time()
     groups_of_token =  ""
@@ -223,10 +237,10 @@ def main():
     for each_text in facebook_df1.get('Text'):
         number_of_posts+=1
         if str(each_text)[-1] in string.punctuation:
-            all_cleaned_text = str(each_text)
+            all_cleaned_text = str(each_text) + "\n"
         else:
 
-            all_cleaned_text = str(each_text) + ". "
+            all_cleaned_text = str(each_text) + ". \n"
 
         tokens_in_post = number_of_tokens(each_text)
         total_tokens += tokens_in_post
@@ -236,7 +250,7 @@ def main():
         #if last one in dataframe, then run longformer function
         if each_text == facebook_df1['Text'].iloc[-1]:
             #print(tokens_in_post)
-            print(groups_of_token)
+            #print(groups_of_token)
             for each_question in questions_list:
                 longformer(groups_of_token,each_question)
 
@@ -246,19 +260,20 @@ def main():
 
         #once reach length of 4096, run longformer function
         else:
-            print(groups_of_token)
+            #print(groups_of_token)
             for each_question in questions_list:
                 longformer(groups_of_token, each_question)
 
             #start making next group of 4096
             groups_of_token = all_cleaned_text
 
-
+    print("========================================")
+    print("++++++++++++++++++++++++++++++++++++++++")
+    print("FINAL RESULTS: \n")
     for each_question in questions_list:
-        if question_answer_dict[each_question][1] == "" or len(question_answer_dict[each_question][1]) > 100:
+        result = question_answer_dict[each_question][1]
+        if len(result)-result.count(' ') == 0 or len(result) == 0:
             result = "Did not detect"
-        else:
-            result = question_answer_dict[each_question][1]
 
         if "What high school did you go to?" in each_question:
             print("Question: " + "What was your high school mascot?")
@@ -270,7 +285,7 @@ def main():
             print("Question: " + each_question)
             print("Answer: " + str(result))
 
-    print("Runtime for " + str(number_of_posts) + ": " + str((time.time()-start_time)/60))
+    print("Runtime for " + str(number_of_posts) + " tweets/" + str(total_tokens) + " tokens: " + str((time.time()-start_time)/60))
 
 
 
