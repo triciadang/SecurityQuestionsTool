@@ -105,11 +105,13 @@ def longformer(text,question):
         except AttributeError:
             pass
 
-    if avg_of_start_end_score > question_answer_dict[question][0]:
+    if avg_of_start_end_score > question_answer_dict[question][0] and len(answer)>0:
         question_answer_dict[question][0] = avg_of_start_end_score
         question_answer_dict[question][1] = answer
         # print(current_answer)
     #print(avg_of_start_end_score)
+
+    #only print if within 2 of top score
     print(question + ": " + answer + ", " + str(avg_of_start_end_score))
     print("===============================")
     return
@@ -179,12 +181,9 @@ def main():
     #Twitter
 
     #Working Examples
-    #twitter_username = "triciadang7"
-    twitter_username = 'joebiden'
+    twitter_username = "triciadang7"
 
-    twitter_username = 'katyperry'
-
-    twitter_username = 'ranzkyle'
+    #twitter_username = 'hillaryclinton'
 
     #facebook excel
     #twitter_username = 'Friend1'
@@ -249,10 +248,12 @@ def main():
 
         #if last one in dataframe, then run longformer function
         if each_text == facebook_df1['Text'].iloc[-1]:
+            print(number_of_posts)
             #print(tokens_in_post)
             #print(groups_of_token)
             for each_question in questions_list:
                 longformer(groups_of_token,each_question)
+
 
         #if not last one, keep adding to current group of 4096
         elif tokens_in_post + number_of_tokens(groups_of_token) < 4090:
@@ -260,12 +261,15 @@ def main():
 
         #once reach length of 4096, run longformer function
         else:
+            print(number_of_posts)
             #print(groups_of_token)
             for each_question in questions_list:
                 longformer(groups_of_token, each_question)
 
             #start making next group of 4096
             groups_of_token = all_cleaned_text
+
+
 
     print("========================================")
     print("++++++++++++++++++++++++++++++++++++++++")
